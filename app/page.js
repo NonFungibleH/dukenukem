@@ -12,12 +12,13 @@ import {
   Sparkles,
   Download,
   Copy,
-  Link2
+  Link2,
+  Lock
 } from "lucide-react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 
-// Single-file landing page. Wallet is wagmi-powered; mint is still stubbed.
-// Tailwind required. Replace stubs with real logic later.
+// Duke image is only revealed AFTER mint.
+// Share/Download also only appear AFTER mint.
 
 export default function DukeNukemLandingPage() {
   // wagmi wallet state
@@ -28,7 +29,7 @@ export default function DukeNukemLandingPage() {
   // image + mint state
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
-  const [dukeUrl, setDukeUrl] = useState("");
+  const [dukeUrl, setDukeUrl] = useState(""); // prepared but hidden pre-mint
   const [isGenerating, setIsGenerating] = useState(false);
   const [isMinting, setIsMinting] = useState(false);
   const [mintedTokenId, setMintedTokenId] = useState(null);
@@ -42,6 +43,8 @@ export default function DukeNukemLandingPage() {
     const url = URL.createObjectURL(f);
     setPreviewUrl(url);
     setDukeUrl("");
+    setMintedTokenId(null);
+    setTxHash(null);
   };
 
   const handleDrop = (e) => {
@@ -115,7 +118,7 @@ export default function DukeNukemLandingPage() {
       ctx.fillText("DUKE MODE", 24, 56);
 
       const url = canvas.toDataURL("image/png");
-      setDukeUrl(url);
+      setDukeUrl(url); // prepared but NOT shown yet
       setIsGenerating(false);
     };
     img.src = previewUrl;
@@ -124,7 +127,7 @@ export default function DukeNukemLandingPage() {
   const handleMint = async () => {
     if (!canMint) return;
     setIsMinting(true);
-    // TODO: call your contract (ethers/viem) to mint using tokenURI
+    // TODO: call your contract (ethers/viem) to mint using tokenURI (dukeUrl uploaded to IPFS, then pass tokenURI)
     await new Promise((r) => setTimeout(r, 1400));
     const fakeId = Math.floor(Math.random() * 10000).toString();
     setMintedTokenId(fakeId);
@@ -142,7 +145,7 @@ export default function DukeNukemLandingPage() {
   };
 
   const downloadImage = () => {
-    if (!dukeUrl) return;
+    if (!dukeUrl || !mintedTokenId) return;
     const a = document.createElement("a");
     a.href = dukeUrl;
     a.download = "duke-nukem-pfp.png";
@@ -211,15 +214,15 @@ export default function DukeNukemLandingPage() {
               the NFT.
             </motion.h2>
             <p className="mt-4 text-neutral-300 max-w-prose">
-              Upload your avatar, apply the Duke treatment, then mint a
-              one-of-one ERC‑721. Share it on X and flex your inner action hero.
+              Upload your avatar, prepare the Duke treatment, then mint a
+              one-of-one ERC‑721. Reveal + share after mint.
             </p>
             <ul className="mt-6 grid grid-cols-2 gap-3 text-sm">
               {[
                 { n: 1, t: "Connect wallet" },
                 { n: 2, t: "Upload PFP" },
-                { n: 3, t: "Generate Duke style" },
-                { n: 4, t: "Mint ERC‑721" },
+                { n: 3, t: "Generate Duke style (hidden)" },
+                { n: 4, t: "Mint to reveal" },
               ].map((s) => (
                 <li key={s.n} className="flex items-center gap-2">
                   <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-neutral-800 border border-neutral-700 text-xs font-bold">
@@ -230,6 +233,8 @@ export default function DukeNukemLandingPage() {
               ))}
             </ul>
           </div>
+
+          {/* Upload / Preview Card */}
           <div className="relative">
             <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 shadow-2xl">
               <div
@@ -260,39 +265,61 @@ export default function DukeNukemLandingPage() {
                     </label>
                   </div>
                 ) : (
+                  // Pre-mint: show ONLY the original (dimmed) with a lock overlay
                   <>
                     <img
                       src={previewUrl}
                       alt="preview"
-                      className="absolute inset-0 h-full w-full object-cover opacity-40"
+                      className="absolute inset-0 h-full w-full object-cover opacity-50"
                     />
-                    <canvas ref={canvasRef} className="relative z-10 h-full w-full" />
+                    {!mintedTokenId && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-neutral-950/50 backdrop-blur-sm">
+                        <Lock className="h-8 w-8 text-amber-400" />
+                        <p className="text-sm text-neutral-300">
+                          Mint to reveal <span className="text-amber-300 font-semibold">DUKE MODE</span>
+                        </p>
+                      </div>
+                    )}
+                    {/* Only render canvas AFTER mint so the styled image becomes visible */}
+                    {mintedTokenId ? (
+                      <canvas ref={canvasRef} className="relative z-10 h-full w-full" />
+                    ) : (
+                      // keep canvas off-DOM pre-mint to avoid peeking
+                      <canvas ref={canvasRef} className="hidden" />
+                    )}
                   </>
                 )}
               </div>
+
+              {/* Actions under the card */}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
                   disabled={!previewUrl || isGenerating}
                   onClick={applyDukeStyle}
                   className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-neutral-900 disabled:opacity-40"
+                  title="Prepares the Duke look, but keeps it hidden until mint"
                 >
                   <Wand2 className="h-4 w-4" />{" "}
-                  {isGenerating ? "Generating…" : "Duke-ify PFP"}
+                  {isGenerating ? "Preparing…" : "Prepare Duke Style"}
                 </button>
-                <button
-                  disabled={!dukeUrl}
-                  onClick={downloadImage}
-                  className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700 disabled:opacity-40"
-                >
-                  <Download className="h-4 w-4" /> Download
-                </button>
-                <button
-                  disabled={!dukeUrl}
-                  onClick={shareOnTwitter}
-                  className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700 disabled:opacity-40"
-                >
-                  <Twitter className="h-4 w-4" /> Share on X
-                </button>
+
+                {/* Share/Download only AFTER mint */}
+                {mintedTokenId && dukeUrl ? (
+                  <>
+                    <button
+                      onClick={downloadImage}
+                      className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700"
+                    >
+                      <Download className="h-4 w-4" /> Download
+                    </button>
+                    <button
+                      onClick={shareOnTwitter}
+                      className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700"
+                    >
+                      <Twitter className="h-4 w-4" /> Share on X
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>
@@ -307,8 +334,7 @@ export default function DukeNukemLandingPage() {
               <Sparkles className="h-5 w-5 text-amber-400" /> Mint your ERC‑721
             </h3>
             <p className="mt-1 text-sm text-neutral-400">
-              Name & description are optional onchain metadata. You can edit
-              defaults later in your API.
+              Prepare your image first, then mint to reveal the Duke version.
             </p>
             <div className="mt-4 grid gap-3">
               <label className="text-sm">
@@ -334,7 +360,7 @@ export default function DukeNukemLandingPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-neutral-900 disabled:opacity-40"
               >
                 <Sparkles className="h-4 w-4" />{" "}
-                {isMinting ? "Minting…" : "Mint NFT"}
+                {isMinting ? "Minting…" : "Mint NFT to Reveal"}
               </button>
               {!isConnected && (
                 <p className="text-sm text-neutral-400">
@@ -343,11 +369,12 @@ export default function DukeNukemLandingPage() {
               )}
               {isConnected && !dukeUrl && (
                 <p className="text-sm text-neutral-400">
-                  Generate your Duke PFP first.
+                  Prepare Duke style first.
                 </p>
               )}
             </div>
           </div>
+
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5">
             <h4 className="text-sm font-semibold text-neutral-300">Contract</h4>
             <p className="mt-1 text-xs text-neutral-400">Mainnet address</p>
@@ -366,13 +393,14 @@ export default function DukeNukemLandingPage() {
               How it works
             </h4>
             <ol className="mt-2 list-decimal pl-5 text-sm text-neutral-400 space-y-1">
-              <li>We style your PFP client-side (or via API) — you approve.</li>
-              <li>We upload the image + JSON metadata (IPFS or your storage).</li>
-              <li>We call <code>safeMint()</code> with the tokenURI.</li>
+              <li>We prepare your PFP (kept hidden pre‑mint).</li>
+              <li>Upload image + JSON metadata (IPFS or your storage).</li>
+              <li>Call <code>safeMint()</code> with the tokenURI.</li>
             </ol>
           </div>
         </div>
 
+        {/* Post-mint reveal card */}
         {mintedTokenId && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -381,7 +409,7 @@ export default function DukeNukemLandingPage() {
           >
             <div className="rounded-2xl border border-amber-500/30 bg-neutral-900/60 p-5">
               <h3 className="text-xl font-bold flex items-center gap-2 text-amber-300">
-                <Check className="h-5 w-5" /> Mint complete
+                <Check className="h-5 w-5" /> Mint complete — Revealed!
               </h3>
               <p className="mt-1 text-sm text-neutral-300">
                 Token ID #{mintedTokenId}
@@ -420,6 +448,7 @@ export default function DukeNukemLandingPage() {
                 </a>
               </div>
             </div>
+
             <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5">
               <h4 className="text-sm font-semibold text-neutral-300">Next steps</h4>
               <ul className="mt-2 space-y-2 text-sm text-neutral-300">
