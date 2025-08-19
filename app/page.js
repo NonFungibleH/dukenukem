@@ -890,6 +890,7 @@ export default function DukeNukemLandingPage() {
     setMintedTokenId(null);
     setTxHash(null);
     setError(null);
+    console.log("File selected, previewUrl:", url);
   };
 
   const handleDrop = (e) => {
@@ -899,76 +900,71 @@ export default function DukeNukemLandingPage() {
   };
 
   const applyDukeStyle = async () => {
-    if (!previewUrl || !canvasRef.current) return;
+    if (!previewUrl || !canvasRef.current) {
+      console.error("applyDukeStyle failed: previewUrl or canvasRef missing", { previewUrl, canvasRef });
+      setError("Please upload an image first.");
+      return;
+    }
     setIsGenerating(true);
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
-      const W = 768, H = 768;
-      canvas.width = W;
-      canvas.height = H;
+    console.log("Starting applyDukeStyle with previewUrl:", previewUrl);
 
-      const s = document.createElement("canvas");
-      const sctx = s.getContext("2d");
-      const scale = 0.15;
-      s.width = Math.max(8, Math.floor(W * scale));
-      s.height = Math.max(8, Math.floor(H * scale));
+    // Simplified for testing: Just use the previewUrl as dukeUrl
+    // Replace this with AI bot integration when ready
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = previewUrl;
 
-      const ratio = Math.max(W / img.width, H / img.height);
-      const sw = img.width * ratio;
-      const sh = img.height * ratio;
-      const sx = (W - sw) / 2;
-      const sy = (H - sh) / 2;
+      img.onload = () => {
+        console.log("Image loaded successfully, dimensions:", img.width, img.height);
+        try {
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            throw new Error("Failed to get canvas context");
+          }
 
-      sctx.imageSmoothingEnabled = true;
-      sctx.drawImage(
-        img,
-        sx / (W / s.width),
-        sy / (H / s.height),
-        sw / (W / s.width),
-        sh / (H / s.height)
-      );
+          const W = 768, H = 768;
+          canvas.width = W;
+          canvas.height = H;
 
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(s, 0, 0, s.width, s.height, 0, 0, W, H);
+          // Simple transformation for testing: Draw the image and add text
+          ctx.drawImage(img, 0, 0, W, H);
+          ctx.fillStyle = "#fde68a";
+          ctx.font = "700 36px system-ui, -apple-system, Segoe UI, Roboto";
+          ctx.fillText("DUKE TEST", 24, 56);
 
-      ctx.globalCompositeOperation = "overlay";
-      ctx.fillStyle = "rgba(255,140,0,0.18)";
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = "multiply";
-      ctx.fillStyle = "rgba(255,255,255,0.06)";
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = "source-over";
+          const url = canvas.toDataURL("image/png");
+          console.log("Duke style generated, dukeUrl:", url);
+          setDukeUrl(url);
+          setIsGenerating(false);
+        } catch (err) {
+          console.error("Error in applyDukeStyle:", err);
+          setError(`Failed to apply Duke style: ${err.message}`);
+          setIsGenerating(false);
+        }
+      };
 
-      ctx.globalAlpha = 0.25;
-      for (let y = 0; y < H; y += 4) {
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, y, W, 2);
-      }
-      ctx.globalAlpha = 1;
-
-      ctx.strokeStyle = "#f59e0b";
-      ctx.lineWidth = 16;
-      ctx.strokeRect(8, 8, W - 16, H - 16);
-      ctx.fillStyle = "#fde68a";
-      ctx.font = "700 36px system-ui, -apple-system, Segoe UI, Roboto";
-      ctx.fillText("DUKE MODE", 24, 56);
-
-      const url = canvas.toDataURL("image/png");
-      setDukeUrl(url);
+      img.onerror = () => {
+        console.error("Failed to load image for applyDukeStyle:", previewUrl);
+        setError("Failed to load the uploaded image. Please try a different image.");
+        setIsGenerating(false);
+      };
+    } catch (err) {
+      console.error("applyDukeStyle error:", err);
+      setError(`Failed to apply Duke style: ${err.message}`);
       setIsGenerating(false);
-    };
-    img.src = previewUrl;
+    }
   };
 
   const uploadToLighthouse = async (file, metadata) => {
     try {
       const apiKey = process.env.NEXT_PUBLIC_LIGHTHOUSE_API_KEY;
       if (!apiKey) throw new Error("Lighthouse API key not found.");
+      console.log("Uploading image to Lighthouse");
       const imageResponse = await lighthouse.upload(file, apiKey);
       const imageCid = imageResponse.data.Hash;
+      console.log("Image uploaded, CID:", imageCid);
 
       const metadataJson = JSON.stringify({
         name: metadata.name,
@@ -977,19 +973,38 @@ export default function DukeNukemLandingPage() {
       });
 
       const metadataBlob = new Blob([metadataJson], { type: "application/json" });
+      console.log("Uploading metadata to Lighthouse");
       const metadataResponse = await lighthouse.upload(metadataBlob, apiKey);
-      return `ipfs://${metadataResponse.data.Hash}`;
+      const metadataCid = metadataResponse.data.Hash;
+      console.log("Metadata uploaded, CID:", metadataCid);
+      return `ipfs://${metadataCid}`;
     } catch (err) {
       throw new Error(`Lighthouse upload failed: ${err.message}`);
     }
   };
 
   const handleMint = async () => {
+    console.log("handleMint called, canMint:", canMint, {
+      isConnected,
+      dukeUrl,
+      hasMinted,
+      nftName,
+      nftDescription,
+      walletClient: !!walletClient,
+    });
+
     if (!canMint) {
-      setError("Cannot mint: Ensure wallet is connected, Duke style is prepared, and MetaMask is installed.");
-      console.error("canMint check failed:", { isConnected, dukeUrl, hasMinted, nftName, nftDescription, walletClient });
+      const reasons = [];
+      if (!isConnected) reasons.push("Wallet not connected");
+      if (!dukeUrl) reasons.push("Duke style not prepared");
+      if (hasMinted) reasons.push("Already minted");
+      if (!nftName) reasons.push("NFT name missing");
+      if (!nftDescription) reasons.push("NFT description missing");
+      if (!walletClient) reasons.push("MetaMask not initialized");
+      setError(`Cannot mint: ${reasons.join(", ")}.`);
       return;
     }
+
     setIsMinting(true);
     setError(null);
 
@@ -1005,7 +1020,11 @@ export default function DukeNukemLandingPage() {
       }
 
       // Convert dukeUrl to File for Lighthouse upload
+      console.log("Fetching dukeUrl for upload:", dukeUrl);
       const response = await fetch(dukeUrl);
+      if (!response.ok) {
+        throw new Error("Failed to fetch dukeUrl for upload");
+      }
       const blob = await response.blob();
       const imageFile = new File([blob], "duke-nukem-pfp.png", { type: "image/png" });
 
@@ -1014,10 +1033,12 @@ export default function DukeNukemLandingPage() {
         name: nftName,
         description: nftDescription,
       };
+      console.log("Uploading to Lighthouse:", metadata);
       const tokenURI = await uploadToLighthouse(imageFile, metadata);
       console.log("Token URI:", tokenURI);
 
       // Call mintNFT function
+      console.log("Simulating mintNFT with args:", { tokenURI, account: address, value: mintFee });
       const { request } = await publicClient.simulateContract({
         address: CONTRACT_ADDRESS,
         abi: CONTRACT_ABI,
@@ -1303,19 +1324,34 @@ export default function DukeNukemLandingPage() {
                 <Sparkles className="h-4 w-4" />{" "}
                 {isMinting ? "Minting…" : "Mint NFT to Reveal"}
               </button>
-              {!isConnected && (
+              {!canMint && (
                 <p className="text-sm text-neutral-400">
-                  Connect your wallet to mint.
-                </p>
-              )}
-              {isConnected && !dukeUrl && (
-                <p className="text-sm text-neutral-400">
-                  Prepare Duke style first.
+                  {isConnected ? (
+                    <>
+                      {dukeUrl ? (
+                        <>
+                          {hasMinted ? (
+                            "Already minted"
+                          ) : (
+                            <>
+                              {nftName && nftDescription
+                                ? "Checking mint status..."
+                                : "Enter NFT name and description"}
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        "Prepare Duke style first"
+                      )}
+                    </>
+                  ) : (
+                    "Connect your wallet to mint"
+                  )}
                 </p>
               )}
               {isConnected && !walletClient && (
                 <p className="text-sm text-red-400">
-                  MetaMask not detected.
+                  MetaMask not detected
                 </p>
               )}
             </div>
