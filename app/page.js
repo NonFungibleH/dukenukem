@@ -11,14 +11,10 @@ import {
   useWriteContract, useWaitForTransactionReceipt
 } from "wagmi";
 import { parseEventLogs } from "viem";
-import lighthouse from "@lighthouse-web3/sdk"; // <-- Lighthouse SDK
+import lighthouse from "@lighthouse-web3/sdk";
 
-// ----------------------
-// Config
-// ----------------------
 const CONTRACT = "0x2162924dae5b87b593fe62205f045a26edf27548"; // Sepolia
 
-// Minimal ABI (matches your contract)
 const NFT_ABI = [
   {
     "inputs":[{"internalType":"string","name":"tokenURI_","type":"string"}],
@@ -28,7 +24,7 @@ const NFT_ABI = [
   },
   {"inputs":[],"name":"mintFee","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
   {"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
-  {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"hasMinted","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"hasMinted","outputs":[{"internalType":"bool","name":"bool","type":"bool"}],"stateMutability":"view","type":"function"},
   {
     "anonymous":false,"inputs":[
       {"indexed":true,"internalType":"address","name":"from","type":"address"},
@@ -45,7 +41,6 @@ const NFT_ABI = [
   }
 ];
 
-// --- Utils ---
 function dataUrlToBlob(dataUrl) {
   const [hdr, b64] = dataUrl.split(",");
   const mimeMatch = hdr.match(/data:(.*?);base64/);
@@ -58,180 +53,259 @@ function dataUrlToBlob(dataUrl) {
 
 export default function DukeNukemLandingPage() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
+  const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
 
-  const [imageUrl, setImageUrl] = useState(null);
-  const [generatedImage, setGeneratedImage] = useState(null);
+  const { data: onchainMintFee } = useReadContract({ address: CONTRACT, abi: NFT_ABI, functionName: "mintFee" });
+  const { writeContract, data: txHash } = useWriteContract();
+  const { data: receipt } = useWaitForTransactionReceipt({ hash: txHash });
+
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [dukeUrl, setDukeUrl] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isMinting, setIsMinting] = useState(false);
   const [mintedTokenId, setMintedTokenId] = useState(null);
-  const [mintedTokenURI, setMintedTokenURI] = useState(null);
+  const [hashForUi, setHashForUi] = useState(null);
+  const canvasRef = useRef(null);
 
-  const { data: mintFee } = useReadContract({
-    address: CONTRACT,
-    abi: NFT_ABI,
-    functionName: "mintFee",
-  });
+  const canMint = isConnected && !!dukeUrl;
 
-  const { data: hasMinted } = useReadContract({
-    address: CONTRACT,
-    abi: NFT_ABI,
-    functionName: "hasMinted",
-    args: [address],
-  });
+  const onFileSelect = (f) => {
+    const url = URL.createObjectURL(f);
+    setPreviewUrl(url);
+    setDukeUrl("");
+    setMintedTokenId(null);
+    setHashForUi(null);
+  };
 
-  const { writeContract, data: txHash, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer?.files?.[0];
+    if (f && f.type.startsWith("image/")) onFileSelect(f);
+  };
 
-  // After mint confirm, parse logs for tokenId + URI
-  useEffect(() => {
-    if (!isConfirmed) return;
-    async function fetchEvents() {
-      try {
-        const receipt = await fetch(`/api/tx/${txHash}`).then(r => r.json());
-        const logs = parseEventLogs({ abi: NFT_ABI, logs: receipt.logs });
-        const minted = logs.find(l => l.eventName === "NFTMinted");
-        if (minted) {
-          setMintedTokenId(minted.args.tokenId.toString());
-          setMintedTokenURI(minted.args.uri);
-          setGeneratedImage(minted.args.uri); // assume image is at same URI
-        }
-      } catch (e) {
-        console.error("Error fetching events", e);
-      }
-    }
-    fetchEvents();
-  }, [isConfirmed, txHash]);
+  const applyDukeStyle = async () => {
+    if (!previewUrl || !canvasRef.current) return;
+    setIsGenerating(true);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      const W = 768, H = 768;
+      canvas.width = W; canvas.height = H;
+
+      const s = document.createElement("canvas");
+      const sctx = s.getContext("2d");
+      const scale = 0.15;
+      s.width = Math.max(8, Math.floor(W * scale));
+      s.height = Math.max(8, Math.floor(H * scale));
+
+      const ratio = Math.max(W / img.width, H / img.height);
+      const sw = img.width * ratio, sh = img.height * ratio;
+      const sx = (W - sw) / 2, sy = (H - sh) / 2;
+
+      sctx.imageSmoothingEnabled = true;
+      sctx.drawImage(img, sx / (W / s.width), sy / (H / s.height), sw / (W / s.width), sh / (H / s.height));
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(s, 0, 0, s.width, s.height, 0, 0, W, H);
+
+      ctx.globalCompositeOperation = "overlay";
+      ctx.fillStyle = "rgba(255,140,0,0.18)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "multiply";
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "source-over";
+
+      ctx.globalAlpha = 0.25;
+      for (let y = 0; y < H; y += 4) { ctx.fillStyle = "black"; ctx.fillRect(0, y, W, 2); }
+      ctx.globalAlpha = 1;
+
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 16;
+      ctx.strokeRect(8, 8, W - 16, H - 16);
+      ctx.fillStyle = "#fde68a";
+      ctx.font = "700 36px system-ui, -apple-system, Segoe UI, Roboto";
+      ctx.fillText("DUKE MODE", 24, 56);
+
+      const url = canvas.toDataURL("image/png");
+      setDukeUrl(url);
+      setIsGenerating(false);
+    };
+    img.src = previewUrl;
+  };
+
+  async function uploadToLighthouse({ imageDataUrl, metadata }) {
+    const apiKey = process.env.NEXT_PUBLIC_LIGHTHOUSE_API_KEY;
+    if (!apiKey) throw new Error("Missing NEXT_PUBLIC_LIGHTHOUSE_API_KEY");
+
+    const imgBlob = dataUrlToBlob(imageDataUrl);
+    const imageFile = new File([imgBlob], "duke.png", { type: "image/png" });
+    const imgOut = await lighthouse.upload(imageFile, apiKey);
+    const imageCid = imgOut?.data?.Hash;
+    if (!imageCid) throw new Error("Lighthouse image upload failed");
+    const imageUri = `ipfs://${imageCid}`;
+
+    const json = JSON.stringify({ ...metadata, image: imageUri });
+    const metaOut = await lighthouse.uploadText(json, apiKey, "duke-metadata.json");
+    const metaCid = metaOut?.data?.Hash;
+    if (!metaCid) throw new Error("Lighthouse metadata upload failed");
+
+    return `ipfs://${metaCid}`;
+  }
 
   const handleMint = async () => {
-    if (!generatedImage) return;
+    if (!canMint) return;
     try {
-      const blob = dataUrlToBlob(generatedImage);
-      const file = new File([blob], "duke.png", { type: "image/png" });
-
-      const output = await lighthouse.upload([file], process.env.NEXT_PUBLIC_LIGHTHOUSE_API_KEY);
-      const ipfsHash = output.data.Hash;
-      const tokenURI = `https://gateway.lighthouse.storage/ipfs/${ipfsHash}`;
-
+      setIsMinting(true);
+      const tokenURI = await uploadToLighthouse({
+        imageDataUrl: dukeUrl,
+        metadata: {
+          name: "Duke Drop",
+          description: "AI-generated Duke-style PFP.",
+          attributes: [{ trait_type: "Style", value: "Duke" }]
+        }
+      });
+      const fee = (onchainMintFee ?? 0n);
       writeContract({
         address: CONTRACT,
         abi: NFT_ABI,
         functionName: "mintNFT",
         args: [tokenURI],
-        value: mintFee,
+        value: fee,
       });
-    } catch (err) {
-      console.error("Mint error:", err);
+    } catch (e) {
+      console.error(e);
+      setIsMinting(false);
+      alert(e?.message ?? String(e));
     }
+  };
+
+  useEffect(() => {
+    if (!receipt || mintedTokenId !== null) return;
+    try {
+      let tokenId = null;
+      try {
+        const parsed1 = parseEventLogs({ abi: NFT_ABI, logs: receipt.logs, eventName: "NFTMinted" });
+        const mine1 = parsed1.find((l) => l?.args?.owner?.toLowerCase() === address?.toLowerCase());
+        if (mine1) tokenId = String(mine1.args.tokenId);
+      } catch {}
+      if (!tokenId) {
+        const parsed2 = parseEventLogs({ abi: NFT_ABI, logs: receipt.logs, eventName: "Transfer" });
+        const mine2 = parsed2.find((l) => l?.args?.to?.toLowerCase() === address?.toLowerCase());
+        if (mine2) tokenId = String(mine2.args.tokenId);
+      }
+      if (tokenId) {
+        setMintedTokenId(tokenId);
+        setHashForUi(String(receipt.transactionHash));
+      }
+    } catch {}
+    finally { setIsMinting(false); }
+  }, [receipt]);
+
+  const shareOnTwitter = () => {
+    const text = encodeURIComponent("I just minted my Duke Nukem style PFP. Come get some! #DukeNukemToken");
+    const url = encodeURIComponent(window.location.href);
+    window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, "_blank");
+  };
+
+  const downloadImage = () => {
+    if (!dukeUrl || !mintedTokenId) return;
+    const a = document.createElement("a");
+    a.href = dukeUrl;
+    a.download = `duke-nukem-pfp-${mintedTokenId}.png`;
+    a.click();
   };
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      {/* Header */}
-      <header className="flex justify-between p-4 border-b border-neutral-800">
-        <h1 className="text-xl font-bold">Duke Nukem NFT</h1>
-        {isConnected ? (
-          <button onClick={() => disconnect()} className="px-3 py-1 bg-red-600 rounded">
-            Disconnect
+      <header className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+        <h1 className="text-xl font-bold text-amber-500">Duke Nukem NFT</h1>
+        {!isConnected ? (
+          <button
+            onClick={() => connect({ connector: connectors[0] })}
+            className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-neutral-900"
+          >
+            <Wallet className="h-4 w-4 inline mr-1" /> Connect Wallet
           </button>
         ) : (
-          connectors.map(conn => (
-            <button key={conn.id} onClick={() => connect({ connector: conn })} className="px-3 py-1 bg-green-600 rounded">
-              Connect {conn.name}
-            </button>
-          ))
+          <button
+            onClick={() => disconnect()}
+            className="rounded-xl bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700"
+          >
+            {address.slice(0, 6)}…{address.slice(-4)}
+          </button>
         )}
       </header>
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-4 py-12 text-center">
-        <h2 className="text-3xl font-bold">Mint your Duke Nukem NFT</h2>
-        <p className="mt-2 text-neutral-400">Unique AI-generated Duke Nukem style PFPs.</p>
-      </section>
+      <main className="p-6 space-y-6">
+        <section
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="border-2 border-dashed border-neutral-700 p-6 rounded-xl text-center"
+        >
+          {!previewUrl ? (
+            <div>
+              <Upload className="mx-auto h-12 w-12 text-neutral-500" />
+              <p className="mt-2 text-neutral-400">Drag & drop an image, or click to select</p>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                id="file-input"
+                onChange={(e) => onFileSelect(e.target.files[0])}
+              />
+              <label htmlFor="file-input" className="cursor-pointer text-amber-500 underline">Browse</label>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <img src={previewUrl} alt="preview" className="mx-auto max-h-64 rounded-lg border border-neutral-800" />
+              {!dukeUrl && (
+                <button
+                  onClick={applyDukeStyle}
+                  disabled={isGenerating}
+                  className="bg-amber-500 text-neutral-900 px-4 py-2 rounded-xl font-semibold"
+                >
+                  {isGenerating ? "Generating..." : "Apply Duke Style"}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
 
-      {/* Mint Panel */}
-      <section className="mx-auto max-w-6xl px-4 pb-20">
-        <div className="mt-8 grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5">
-            {generatedImage ? (
-              <img src={generatedImage} alt="Generated Duke" className="rounded-xl w-full" />
-            ) : (
-              <div className="flex h-64 items-center justify-center border border-dashed border-neutral-700 rounded-xl">
-                <span className="text-neutral-500">No image generated</span>
-              </div>
-            )}
+        <canvas ref={canvasRef} className="hidden"></canvas>
 
-            <button
-              disabled={isPending || isConfirming || hasMinted}
-              onClick={handleMint}
-              className="mt-4 px-4 py-2 bg-amber-500 hover:bg-amber-600 rounded text-black font-semibold"
-            >
-              {isPending || isConfirming ? "Minting..." : hasMinted ? "Already Minted" : "Mint Duke NFT"}
-            </button>
-
-            {isConfirmed && (
-              <div className="mt-4 text-green-400">
-                ✅ Minted successfully! Token #{mintedTokenId}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5">
-            <h4 className="text-sm font-semibold text-neutral-300">Contract</h4>
-            <p className="mt-1 text-xs text-neutral-400">Sepolia address</p>
-            <div className="mt-2 flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
-              <a href={`https://sepolia.etherscan.io/address/${CONTRACT}`} target="_blank" rel="noreferrer" className="text-xs hover:text-amber-400">
-                {CONTRACT}
+        {mintedTokenId ? (
+          <section className="p-6 bg-neutral-900 rounded-xl text-center space-y-3">
+            <h2 className="text-lg font-bold text-amber-500">Minted Successfully!</h2>
+            <img src={dukeUrl} alt="duke" className="mx-auto max-h-64 rounded-lg border border-amber-500" />
+            <div className="flex gap-3 justify-center">
+              <button onClick={downloadImage} className="bg-neutral-800 px-3 py-2 rounded-xl">Download</button>
+              <button onClick={shareOnTwitter} className="bg-blue-500 px-3 py-2 rounded-xl text-white">Share</button>
+              <a
+                href={`https://sepolia.etherscan.io/tx/${hashForUi}`}
+                target="_blank"
+                className="bg-neutral-800 px-3 py-2 rounded-xl"
+              >
+                View Tx
               </a>
-              <button onClick={() => navigator.clipboard.writeText(CONTRACT)} className="text-xs text-neutral-400 hover:text-amber-400 inline-flex items-center gap-1">
-                <Copy className="h-3 w-3" /> Copy
-              </button>
             </div>
-            <div className="mt-3 text-xs text-neutral-400">Network: Sepolia (switch in your wallet)</div>
-            <div className="mt-4 h-px bg-neutral-800" />
-            <h4 className="mt-4 text-sm font-semibold text-neutral-300">How it works</h4>
-            <ol className="mt-2 list-decimal pl-5 text-sm text-neutral-400 space-y-1">
-              <li>We prepare your PFP (kept hidden pre-mint).</li>
-              <li>Upload image + JSON metadata to IPFS via Lighthouse.</li> {/* ✅ fixed */}
-              <li>Call <code>mintNFT(tokenURI)</code>.</li>
-            </ol>
-          </div>
-        </div>
-
-        {/* Post-mint reveal card */}
-        {mintedTokenId && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-8 grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5">
-              <h4 className="text-sm font-semibold text-neutral-300">Your Duke Nukem NFT</h4>
-              {generatedImage && <img src={generatedImage} alt="Minted Duke" className="mt-2 rounded-xl w-full" />}
-              <div className="mt-3 text-sm text-neutral-400">Token #{mintedTokenId}</div>
-              <div className="mt-3 flex gap-2">
-                <a href={`https://twitter.com/intent/tweet?text=I%20just%20minted%20a%20Duke%20Nukem%20NFT!&url=${mintedTokenURI}`} target="_blank" rel="noreferrer" className="px-3 py-1 bg-sky-500 rounded text-white text-sm flex items-center gap-1">
-                  <Twitter className="h-4 w-4" /> Share
-                </a>
-                <a href={generatedImage} download className="px-3 py-1 bg-neutral-800 rounded text-sm flex items-center gap-1">
-                  <Download className="h-4 w-4" /> Download
-                </a>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5">
-              <h4 className="text-sm font-semibold text-neutral-300">Next steps</h4>
-              <ul className="mt-2 space-y-2 text-sm text-neutral-300">
-                <li>• Airdrop a few to early community members.</li>
-                <li>• Run a meme contest: best Duke caption wins.</li>
-                <li>• Add allowlist + onchain royalties if desired.</li>
-              </ul>
-              <div className="mt-6 text-xs text-neutral-400">
-                Tip: Lighthouse has encryption/token-gating add-ons if you want to evolve this later. {/* ✅ fixed */}
-              </div>
-            </div>
-          </motion.div>
+          </section>
+        ) : (
+          isConnected && dukeUrl && (
+            <button
+              onClick={handleMint}
+              disabled={isMinting}
+              className="w-full bg-amber-500 text-neutral-900 py-3 rounded-xl font-bold"
+            >
+              {isMinting ? "Minting..." : "Mint Duke NFT"}
+            </button>
+          )
         )}
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-neutral-800 p-4 text-center text-neutral-500 text-sm">
-        Built with wagmi, Lighthouse, and Next.js
-      </footer>
+      </main>
     </div>
   );
 }
+
+
