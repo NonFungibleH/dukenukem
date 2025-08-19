@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* optional */
-* { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-html, body { height: 100%; }
+/* optional tweaks */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  height: 100%;
+}
