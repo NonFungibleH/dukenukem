@@ -1,4 +1,5 @@
 import './globals.css';
+import Providers from './providers';
 
 export const metadata = {
   title: 'Duke Nukem Token',
@@ -9,7 +10,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="bg-neutral-950 text-neutral-100">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
