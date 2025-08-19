@@ -1227,7 +1227,7 @@ export default function DukeNukemLandingPage() {
                     {!mintedTokenId && (
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-neutral-950/50 backdrop-blur-sm">
                         <Lock className="h-8 w-8 text-amber-400" />
-                        <p className="text-sm text-neutral- trudne
+                        <p className="text-sm text-neutral-300">
                           Mint to reveal{" "}
                           <span className="text-amber-300 font-semibold">
                             DUKE MODE
@@ -1260,7 +1260,7 @@ export default function DukeNukemLandingPage() {
                   <>
                     <button
                       onClick={downloadImage}
-                      className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700"
+                      className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bgarwin-700"
                     >
                       <Download className="h-4 w-4" /> Download
                     </button>
