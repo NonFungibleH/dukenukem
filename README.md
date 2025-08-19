@@ -1,4 +1,4 @@
-# Duke Nukem Token – Landing Page
+# duke nukem Token – Landing Page
 
 Next.js (App Router) + Tailwind + framer-motion + lucide-react.
 
