@@ -1,3 +1,5 @@
+import './globals.css';
+
 export const metadata = {
   title: "Duke Nukem Token",
   description: "Mint your 90s-action PFP — ERC‑721",
