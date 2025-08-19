@@ -1,3 +1,4 @@
+```jsx
 "use client";
 import React, { useRef, useState, useEffect } from "react";
 import { motion } from "framer-motion";
@@ -889,6 +890,7 @@ export default function DukeNukemLandingPage() {
   const [hasMinted, setHasMinted] = useState(false);
   const [mintFee, setMintFee] = useState(null);
   const [error, setError] = useState(null);
+  const [walletClient, setWalletClient] = useState(null);
   const canvasRef = useRef(null);
 
   const publicClient = createPublicClient({
@@ -896,12 +898,18 @@ export default function DukeNukemLandingPage() {
     transport: http(),
   });
 
-  const walletClient = createWalletClient({
-    chain: base,
-    transport: custom(window.ethereum),
-  });
-
   const canMint = isConnected && !!dukeUrl && !hasMinted && nftName && nftDescription;
+
+  // Initialize walletClient only on the client side
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.ethereum) {
+      const client = createWalletClient({
+        chain: base,
+        transport: custom(window.ethereum),
+      });
+      setWalletClient(client);
+    }
+  }, []);
 
   // Check if user has already minted and fetch mint fee
   useEffect(() => {
@@ -1032,7 +1040,7 @@ export default function DukeNukemLandingPage() {
   };
 
   const handleMint = async () => {
-    if (!canMint) return;
+    if (!canMint || !walletClient) return;
     setIsMinting(true);
     setError(null);
 
@@ -1260,7 +1268,7 @@ export default function DukeNukemLandingPage() {
                   <>
                     <button
                       onClick={downloadImage}
-                      className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bgarwin-700"
+                      className="inline-flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700"
                     >
                       <Download className="h-4 w-4" /> Download
                     </button>
@@ -1480,3 +1488,4 @@ export default function DukeNukemLandingPage() {
     </div>
   );
 }
+```
