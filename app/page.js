@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Upload,
@@ -14,13 +14,18 @@ import {
   Copy,
   Link2
 } from "lucide-react";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 
-// Single-file landing page. Wallet + mint are stubbed.
+// Single-file landing page. Wallet is wagmi-powered; mint is still stubbed.
 // Tailwind required. Replace stubs with real logic later.
 
 export default function DukeNukemLandingPage() {
-  const [connected, setConnected] = useState(false);
-  const [address, setAddress] = useState("");
+  // wagmi wallet state
+  const { address, isConnected } = useAccount();
+  const { connectors, connect } = useConnect();
+  const { disconnect } = useDisconnect();
+
+  // image + mint state
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [dukeUrl, setDukeUrl] = useState("");
@@ -30,13 +35,7 @@ export default function DukeNukemLandingPage() {
   const [txHash, setTxHash] = useState(null);
   const canvasRef = useRef(null);
 
-  const canMint = connected && !!dukeUrl;
-
-  const handleConnect = async () => {
-    // TODO: integrate wagmi + RainbowKit / Reown
-    setConnected(true);
-    setAddress("0x7dE3...BEEF");
-  };
+  const canMint = isConnected && !!dukeUrl;
 
   const onFileSelect = (f) => {
     setFile(f);
@@ -169,17 +168,29 @@ export default function DukeNukemLandingPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {connected ? (
-              <button className="rounded-xl bg-neutral-800 px-3 py-2 text-sm font-medium hover:bg-neutral-700 transition flex items-center gap-2">
-                <Wallet className="h-4 w-4" /> {address}
-              </button>
-            ) : (
+            {!isConnected ? (
               <button
-                onClick={handleConnect}
+                onClick={() => {
+                  const mm = connectors.find(c => c.id === "metaMask");
+                  const injected = connectors.find(c => c.id === "injected");
+                  connect({ connector: mm || injected || connectors[0] });
+                }}
                 className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-neutral-900 hover:brightness-110 transition flex items-center gap-2"
               >
                 <Wallet className="h-4 w-4" /> Connect Wallet
               </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button className="rounded-xl bg-neutral-800 px-3 py-2 text-sm font-medium hover:bg-neutral-700 transition">
+                  {address?.slice(0, 6)}…{address?.slice(-4)}
+                </button>
+                <button
+                  onClick={() => disconnect()}
+                  className="rounded-xl bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700"
+                >
+                  Disconnect
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -325,12 +336,12 @@ export default function DukeNukemLandingPage() {
                 <Sparkles className="h-4 w-4" />{" "}
                 {isMinting ? "Minting…" : "Mint NFT"}
               </button>
-              {!connected && (
+              {!isConnected && (
                 <p className="text-sm text-neutral-400">
                   Connect your wallet to mint.
                 </p>
               )}
-              {connected && !dukeUrl && (
+              {isConnected && !dukeUrl && (
                 <p className="text-sm text-neutral-400">
                   Generate your Duke PFP first.
                 </p>
